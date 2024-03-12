@@ -202,5 +202,180 @@ sudo exportfs -v
 
 ### Instalación de Name Service Switch (NSS), Pluggable Authentication Module (PAM) y Name Service Cache Daemon (NSCD) en el servidor
 
+En el servidor LDAP, debemos instalar varios paquetes que nos permitirán resolver nombres de usuarios (UID), grupos (GID), identificación, consultar información de directorios y almacenar resoluciones de nombres en caché. Instalaremos los paquetes necesarios usando el siguiente comando:
 
+```sql
+sudo apt install libpam-ldapd nscd libnss-ldap
+```
 
+Cuando lo inslalemos, nos pedirá que pongamos nuestra propia máquina a la hora de configurar el paquete nslcd de la siguiente manera:
+
+![FOTOS](img/11.png)
+
+![FOTOS](img/12.png)
+
+![FOTOS](img/13.png)
+
+![FOTOS](img/14.png)
+
+![FOTOS](img/15.png)
+
+![FOTOS](img/16.png)
+
+![FOTOS](img/17.png)
+
+![FOTOS](img/18.png)
+
+Nota: Si queremos restablecer esta configuración, usamos:
+
+```sql
+sudo dpkg-reconfigure libnss-ldap
+```
+
+Comprobamos el uuid del usuario user:
+
+```sql
+sudo id user
+```
+
+Finalmente, probaremos a loguearnos con el usuario user, y la contraseña que establecimos anteriormente "Cifrada".
+
+```sql
+sudo login user
+```
+
+![FOTOS](img/19.png)
+
+### Configuración del cliente Ubuntu Loki
+
+Lo primero que haremos será instalar el paquete que contiene las herramientas de ldap:
+
+```sql
+sudo apt install ldap-utils
+```
+
+Lo siguiente que vamos a hacer será, modificar el fichero de configuración para el cliente, añadiendo las dos siguientes líneas:
+
+```sql
+sudo nano /etc/ldap/ldap.conf
+
+BASE dc=peperc,dc=gonzalonazareno,dc=org
+URI ldap://odin.peperc.gonzalonazareno.org
+```
+
+Cuando terminemos de modificar el fichero de configuración, comprobaremos que se hayan aplicado los cambios, con el comando:
+
+```sql
+sudo ldapsearch -x -b "dc=peperc,dc=gonzalonazareno,dc=org"
+```
+
+![FOTOS](img/20.png)
+
+Para verificar que podamos autenticarnos, ejecutamos el siguiente comando (Posteriormente introducimos la contraseña del usuario user):
+
+```sql
+sudo ldapwhoami -x -D "uid=user,ou=Usuarios,dc=peperc,dc=gonzalonazareno,dc=org" -W
+```
+
+![FOTOS](img/21.png)
+
+Como hicimos anteriormente en el servidor, instalaremos los paquetes libnss-ldap, libpam-ldapd y nscd:
+
+```sql
+sudo apt install libnss-ldap libpam-ldapd nscd -y
+```
+
+Indicamos la configuración como hicimos anteriormente en el servidor:
+
+![FOTOS](img/22.png)
+
+![FOTOS](img/23.png)
+
+![FOTOS](img/24.png)
+
+![FOTOS](img/25.png)
+
+![FOTOS](img/26.png)
+
+![FOTOS](img/27.png)
+
+![FOTOS](img/28.png)
+
+![FOTOS](img/29.png)
+
+![FOTOS](img/30.png)
+
+Una vez configurado, reinciamos la máquina (En este caso el contenedor LXC) o el servicio nscd.
+
+```sql
+sudo systemctl restart nscd
+```
+
+Con esto ya podremos logearnos desde el cliente, con el usuario user, pero no podremos acceder a su directorio personal. Para ello vamos a crear una unidad systemd, con la cual montaremos el directorio mediante NFS.
+
+Por lo que antes que nada crearemos el directorio donde montaremos el home del usuario user y le aplicamos el propietario:
+
+```sql
+sudo mkdir /home/user
+sudo chown 2001:2001 /home/user
+```
+
+Instalaremos el paquete que contiene el cliente NFS:
+
+```sql
+sudo apt install nfs-common -y
+```
+
+Iniciamos y habilitamos el servicio:
+
+```sql
+sudo systemctl start nfs-client.target 
+sudo systemctl enable nfs-client.target
+```
+
+Creamos la unidad nfs:
+
+```sql
+sudo nano /etc/systemd/system/home-user.mount
+```
+
+Y añadimos el siguiente contenido:
+
+```sql
+[Unit]
+Description=Montaje NFS (/home/user)
+Requires=network-online.target
+After=network-online.target
+[Mount]
+What=192.168.0.2:/home/user
+Where=/home/user
+Options=_netdev,auto
+Type=nfs
+[Install]
+WantedBy=multi-user.target
+```
+
+Recargamos el demonio systemd para que reconozca el nuevo fichero con extensión .mount:
+
+```sql
+sudo systemctl daemon-reload
+```
+
+Iniciamos y habilitamos la unidad:
+
+```sql
+sudo systemctl start home-user.mount
+sudo systemctl enable home-user.mount
+```
+
+Comprobamos el estado con:
+
+```sql
+sudo systemctl status home-user.mount
+```
+
+Ahora probaremos a loguearnos con el usuario user (Desde el cliente ubuntu):
+
+![FOTOS](img/31.png)
+
+Y con esto ya hemos terminado la práctica de la instalación y configuración básica de OpenLDAP en Thor.
